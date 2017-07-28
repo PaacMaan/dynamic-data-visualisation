@@ -1,0 +1,305 @@
+---
+title: "Examen_Data_visualisation"
+author: "pacman"
+date: "June 25, 2017"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<center>
+  <h3><u>Compte rendue - Examen Final ~ Data Visualisation</u></h3>
+  <h4>Réalisé par : Ayoub RMIDI <br> Encadré par : Mr. Elhassouny azzedine</h4>
+</center>
+
+## Exercice 1 :
+
+Réalise une application shiny d'exploration des donnees par fonction telles que head, summarize et autres <br/><br/>
+Dans l'interface : <br/><br/>
+
+- L'application permet a l'utilisateur de donner
+    * la base a explorer
+    * la fonction qui permet d'explorer les donnees
+
+- Resultats : 
+    * afficher le resultat de la fonction
+
+
+```{r, echo = TRUE}
+shinyApp(
+  
+  ui = pageWithSidebar(
+      headerPanel('Execution : '),
+      sidebarPanel(
+        # selectInput("db", label = "choose a data set to explore",
+        #             choices = c("iris", "df_pop_country"), selected = "iris")
+        # give the user to choose the data set to play with
+        fileInput(inputId = "file",label = "Upload a data set to explore",
+                  accept = c(
+                    "text/csv",
+                    "text/comma-separated-values,text/plain",
+                    ".csv")
+        ),
+        # give the user the ability to see the header content or not , by default it's true
+        selectInput(inputId = "head",label = "Header",
+                    choices = c("TRUE","FALSE"),selected = "TRUE"),
+        # give the user the ability to choose a function to apply on the uploaded dataset
+        selectInput("funct", label = "choose a function to try",
+                    choices = c("head", "summarize", "tail"), selected = "head")
+      ),
+      # here wi fix the main panel 
+      mainPanel(
+        textOutput("funct"),
+        textOutput("dataSet"),
+        tableOutput("final"),
+        verbatimTextOutput("summary"),
+        tags$style(type="text/css",
+                 ".shiny-output-error { visibility: hidden; }",
+                 ".shiny-output-error:before { visibility: hidden; }"
+        )
+      )
+),
+  
+  server = function(input, output) {
+      output$final <- renderTable({
+        # select the dataset from the user
+        inFile <- input$file
+        if (is.null(inFile))
+          return(NULL)
+        # select the head value 
+        headerContent <- reactive({  input$head })
+        # read the csv file beyond the header option
+        if(headerContent() == "TRUE")
+          dataSet <- read.csv(inFile$datapath, header = TRUE)
+        else
+          dataSet <- read.csv(inFile$datapath, header = FALSE)
+        # select the function from the user
+        selectedFunction <- reactive({ input$funct })
+        switch(selectedFunction(),
+               head = {
+                 output$summary <- renderPrint({ invisible(NULL)  })
+                 head(dataSet)
+               },
+               tail = {
+                 output$summary <- renderPrint({ invisible(NULL)  })
+                 tail(dataSet)
+               },
+               summarize = {
+                 output$summary <- renderPrint({
+                   summary(dataSet)
+                 })
+               })
+      })
+    },
+  
+  options = list(height = 500)
+)
+```
+
+## Exercice 2 :
+
+Réalise une application shiny pour afficher la matrice de correlation.<br/><br/>
+Dans l'interface : <br/><br/>
+
+- L'application permet a l'utilisateur de donner 
+    * la base a explorer
+    * les variables a explorer soit sous forme des checkbox ou des selectize multiple d'une facon dynamique selon le fichier csv mis en upload
+      
+- Resultats : 
+    * affiche la matrice de correlation
+         
+```{r, echo = TRUE}
+library(corrplot)
+library(htmltools)
+source("sortable.R", local = TRUE)
+
+shinyApp(
+  
+  ui = pageWithSidebar(
+        headerPanel('Execution 2 :'),
+        sidebarPanel(
+          
+          # give the user to choose the data set to play with
+          fileInput(inputId = "file",label = "Upload a data set to explore",
+                    accept =
+                      c("text/csv","text/comma-separated-values,text/plain",".csv")
+          ),
+          # give the user the ability to choose the file's variables with a checkbox or with a selectize
+          radioButtons("variablesStyle", "Variable Selection Style", c("Checkbox", "Selectize"), inline = T),
+          helpText("Choose the variables to display."),
+          
+          # show the checkbox if the user choose to show the variables as a checkbox
+          conditionalPanel("input.variablesStyle === 'Checkbox'",
+                            sortableCheckboxGroupInput("variablesCheckbox", "", 
+                            c("Loading..."))),
+          
+          # show the selectize if the user choose to show the variables as a selectize
+          conditionalPanel("input.variablesStyle === 'Selectize'",
+                            sortableSelectizeInput("variables", "", 
+                            c("Loading..."),
+                            multiple = T, options = list(plugins = 
+                            list("remove_button"))))
+        ),
+        # here wi fix the main panel 
+        mainPanel(
+          plotOutput("corrPlot"),
+          tags$style(type="text/css",
+                 ".shiny-output-error { visibility: hidden; }",
+                 ".shiny-output-error:before { visibility: hidden; }"
+          )
+        )
+),
+  
+  server = function(input, output, session) {
+      # read the input file uploaded by the user
+      dataset <- reactive({
+        inFile <- input$file
+        if(is.null(inFile)) {
+          NULL
+        } else {
+          #TODO: Better way to unescape e.g. \\t
+          #read.delim(inFile$datapath, sep = gsub("\\t", "\t", input$datafile_sep, fixed
+                     # = TRUE))
+          read.csv(inFile$datapath)
+        }
+      })
+      # End of dataset
+      
+      # get the header names of the uploaded file with a numeric format
+      numericColumns <- reactive({
+        df <- dataset()
+        colnames(df)[sapply(df, is.numeric)]
+      })
+      # End of numericColumns
+      
+      # draw the correlated matrix in analogie with the selected variables
+      correlation <- reactive({
+        data <- dataset()
+        variables <- input$variables
+        if(is.null(data) ) {
+          NULL
+        } else {
+          cor(dataset()[,input$variables])
+        }
+      })
+      # End of correlation
+      
+      # Update variable selection
+      observe({
+        updateCheckboxGroupInput(session, "variablesCheckbox", choices = 
+                                   numericColumns(), selected = numericColumns())
+        updateSelectInput(session, "variables", choices = numericColumns(), selected = 
+                            numericColumns())
+      })
+      
+      # Link Variable Selection
+      observe({
+        if(input$variablesStyle == "Checkbox") {
+          updateCheckboxGroupInput(session, "variablesCheckbox", selected = 
+                                   isolate(input$vairables))
+        }
+      })
+      
+      observe({
+        updateSelectInput(session, "variables", selected = input$variablesCheckbox)
+      })
+      
+      # Correlation Plot 
+      output$corrPlot <- renderPlot({
+        val <- correlation()
+        if(is.null(val)) return(NULL)
+
+        val[is.na(val)] <- 0
+        args <- list(val, order = "original", plotCI = "n")
+    
+        do.call(corrplot, c(list(method = "circle", type = "full"), args))
+      })
+      
+    },
+  
+  options = list(height = 500)
+)
+```
+
+## Exercice 3 :
+
+Réalise une application shiny d'exploration des donnees par graphique tels que l'histogramme, scatterplot et autres. <br/><br/>
+Dans l'interface : <br/><br/>
+
+- L'application permet a l'utilisateur de donner 
+    * la base a explorer
+    * les types de graphiques avec les variables .
+      
+- Resultats : 
+    * affiche le graphique ou les graphiques
+
+```{r, echo = TRUE}
+library(ggplot2)
+library(scatterplot3d)
+shinyApp(
+  
+  ui = pageWithSidebar(
+      headerPanel('Execution : '),
+      sidebarPanel(
+        # selectInput("db", label = "choose a data set to explore",
+        #             choices = c("iris", "df_pop_country"), selected = "iris")
+        # give the user to choose the data set to play with
+        fileInput(inputId = "file",label = "Upload a data set to explore",
+                  accept = c(
+                    "text/csv",
+                    "text/comma-separated-values,text/plain",
+                    ".csv")
+        ),
+        # give the user the ability to choose a function to apply on the uploaded dataset
+        selectInput("funct", label = "choose any type of histogram",
+                    choices = c("hist", "ggplot", "scatterplot3d"), selected = "hist")
+      ),
+      # here wi fix the main panel 
+      mainPanel(
+        tableOutput("final"),
+        plotOutput("dataset"),
+        tags$style(type="text/css",
+                 ".shiny-output-error { visibility: hidden; }",
+                 ".shiny-output-error:before { visibility: hidden; }"
+        )
+      )
+),
+  
+  server = function(input, output) {
+      output$final <- renderTable({
+        # select the dataset from the user
+        inFile <- input$file
+        if (is.null(inFile))
+          return(NULL)
+
+        # read the csv file beyond the header option
+        dataSet <- read.csv(inFile$datapath, header = TRUE)
+        # select the function from the user
+        selectedFunction <- reactive({ input$funct })
+        #get the length of variables
+        #my_vars <- length(names(dataSet))
+        switch(selectedFunction(),
+               hist = {
+                 output$dataset <- renderPlot({ hist(dataSet[,3])  })
+               },
+               ggplot = {
+                 output$dataset <- renderPlot({ 
+                      ggplot(dataSet,aes(x= dataSet[,4],y=dataSet[,3]) ) + geom_point()
+                   })
+               },
+               scatterplot3d = {
+                 output$dataset <- renderPlot({
+                      scatterplot3d(x= dataSet[,5],y=dataSet[,3],z=dataSet[,4],
+                      color = 'blue',
+                      grid=TRUE)
+                 })
+               })
+      })
+    },
+  
+  options = list(height = 500)
+)
+```
