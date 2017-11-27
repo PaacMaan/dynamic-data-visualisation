@@ -1,4 +1,4 @@
-# dynamic-data-visualisation
+# dynamic data visualisation
 this repository provide a 3 workshops using markdown and shiny apps .
 
 <h3>First workshop : </h3>
